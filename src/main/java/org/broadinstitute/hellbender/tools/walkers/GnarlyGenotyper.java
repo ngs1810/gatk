@@ -228,7 +228,7 @@ public final class GnarlyGenotyper extends VariantWalker {
 
         final List<Allele> targetAlleles;
         final boolean removeNonRef;
-        if (variant.getAlleles().contains(Allele.NON_REF_ALLELE)) { //I don't know why, but sometimes GDB returns a context without a NON_REF
+        if (variant.getAlleles().contains(Allele.NON_REF_ALLELE)) { //Hail combine output doesn't give NON_REFs
             targetAlleles = variant.getAlleles().subList(0, variant.getAlleles().size() - 1);
             removeNonRef = true;
         }
