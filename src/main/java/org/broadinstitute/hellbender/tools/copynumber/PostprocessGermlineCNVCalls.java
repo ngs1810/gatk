@@ -13,7 +13,10 @@ import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.tools.copynumber.arguments.CopyNumberArgumentValidationUtils;
 import org.broadinstitute.hellbender.tools.copynumber.formats.collections.*;
 import org.broadinstitute.hellbender.tools.copynumber.formats.metadata.LocatableMetadata;
+import org.broadinstitute.hellbender.tools.copynumber.formats.metadata.SimpleSampleLocatableMetadata;
 import org.broadinstitute.hellbender.tools.copynumber.formats.records.CopyNumberPosteriorDistribution;
+import org.broadinstitute.hellbender.tools.copynumber.formats.records.LinearNonLocatableCopyRatio;
+import org.broadinstitute.hellbender.tools.copynumber.formats.records.DenoisedLocatableCopyRatio;
 import org.broadinstitute.hellbender.tools.copynumber.formats.records.IntervalCopyNumberGenotypingData;
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.GermlineCNVIntervalVariantComposer;
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.GermlineCNVNamingConstants;
@@ -38,7 +41,8 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * Postprocesses the output of {@link GermlineCNVCaller} and generates VCF files.
+ * Postprocesses the output of {@link GermlineCNVCaller} and generates VCF files as well as concatenated denoised
+ * copy ratio file.
  *
  * <p>This tool generates "intervals" and "segments" VCF files that serve complementary purposes. The intervals VCF
  * file provides a detailed listing of the most likely copy-number call for each genomic interval included in the
@@ -56,6 +60,9 @@ import java.util.stream.IntStream;
  * undeclared contigs are assumed to be autosomal. The reference copy-number on an allosomal contig is determined
  * by the sex karyotype of the sample and is set to the pre-determined contig ploidy state fetched from the output
  * calls of {@link DetermineGermlineContigPloidy}.</p>
+ *
+ * <p>Finally, the Postprocessor concatenates denoised copy ratio tables from all the call shards produced by the
+ * {@link GermlineCNVCaller} into a single table. </p>
  *
  * <h3>Required inputs:</h3>
  * <ul>
@@ -83,14 +90,15 @@ import java.util.stream.IntStream;
  *     --allosomal-contig Y
  *     --output-genotyped-intervals sample_0_genotyped_intervals.vcf
  *     --output-genotyped-segments sample_0_genotyped_segments.vcf
+ *     --output-denoised-copy-ratios sample_0_denoised_copy_ratios.tsv
  * </pre>
  *
  * @author Mehrtash Babadi &lt;mehrtash@broadinstitute.org&gt;
  * @author Andrey Smirnov &lt;asmirnov@broadinstitute.org&gt;
  */
 @CommandLineProgramProperties(
-        summary = "Postprocesses the output of GermlineCNVCaller and generates VCF files",
-        oneLineSummary = "Postprocesses the output of GermlineCNVCaller and generates VCF files",
+        summary = "Postprocesses the output of GermlineCNVCaller, generates VCF files and concatenates denoised copy ratio files ",
+        oneLineSummary = "Postprocesses the output of GermlineCNVCaller, generates VCF files and concatenates denoised copy ratio files",
         programGroup = CopyNumberProgramGroup.class
 )
 @DocumentedFeature
@@ -103,8 +111,10 @@ public final class PostprocessGermlineCNVCalls extends GATKTool {
     public static final String SAMPLE_INDEX_LONG_NAME = "sample-index";
     public static final String OUTPUT_INTERVALS_VCF_LONG_NAME = "output-genotyped-intervals";
     public static final String OUTPUT_SEGMENTS_VCF_LONG_NAME = "output-genotyped-segments";
+    public static final String OUTPUT_DENOISED_COPY_RATIOS_LONG_NAME = "output-denoised-copy-ratios";
     public static final String AUTOSOMAL_REF_COPY_NUMBER_LONG_NAME = "autosomal-ref-copy-number";
     public static final String ALLOSOMAL_CONTIG_LONG_NAME = "allosomal-contig";
+
 
     @Argument(
             doc = "List of paths to GermlineCNVCaller call directories.",
@@ -160,10 +170,22 @@ public final class PostprocessGermlineCNVCalls extends GATKTool {
     )
     private File outputSegmentsVCFFile;
 
+    @Argument(
+            doc = "Output denoised copy ratio file concatenated together from call shards.",
+            fullName = OUTPUT_DENOISED_COPY_RATIOS_LONG_NAME,
+            optional = true
+    )
+    private File outputDenoisedCopyRatioFile = null;
+
     /**
      * A list of {@link SimpleIntervalCollection} for each shard
      */
     private List<SimpleIntervalCollection> sortedIntervalCollections;
+
+    /**
+     * Sequence dictionary that should be equivalent in each shard
+     */
+    private SAMSequenceDictionary sequenceDictionary;
 
     /**
      * The sample name corresponding to the provided sample index
@@ -219,19 +241,19 @@ public final class PostprocessGermlineCNVCalls extends GATKTool {
                 getIntervalCollectionsFromPaths(inputUnsortedModelShardPaths);
 
         /* assert that all shards have the same SAM sequence dictionary */
-        final SAMSequenceDictionary samSequenceDictionary = unsortedIntervalCollectionsFromCalls.get(0)
+        sequenceDictionary = unsortedIntervalCollectionsFromCalls.get(0)
                 .getMetadata().getSequenceDictionary();
         Utils.validateArg(unsortedIntervalCollectionsFromCalls.stream()
                         .map(SimpleIntervalCollection::getMetadata)
                         .map(LocatableMetadata::getSequenceDictionary)
                         .allMatch(shardSAMSequenceDictionary ->
-                                shardSAMSequenceDictionary.equals(samSequenceDictionary)),
+                                shardSAMSequenceDictionary.equals(sequenceDictionary)),
                 "The SAM sequence dictionary is not the same for all of the call shards.");
         Utils.validateArg(unsortedIntervalCollectionsFromModels.stream()
                         .map(SimpleIntervalCollection::getMetadata)
                         .map(LocatableMetadata::getSequenceDictionary)
                         .allMatch(shardSAMSequenceDictionary ->
-                                shardSAMSequenceDictionary.equals(samSequenceDictionary)),
+                                shardSAMSequenceDictionary.equals(sequenceDictionary)),
                 "The SAM sequence dictionary is either not the same for all of the model shards, " +
                         "or is different from the SAM sequence dictionary of calls shards.");
 
@@ -258,7 +280,7 @@ public final class PostprocessGermlineCNVCalls extends GATKTool {
         sortedIntervalCollections = sortedIntervalCollectionsFromCalls;
 
         /* assert that allosomal contigs are contained in the SAM sequence dictionary */
-        final Set<String> allContigs = samSequenceDictionary.getSequences().stream()
+        final Set<String> allContigs = sequenceDictionary.getSequences().stream()
                 .map(SAMSequenceRecord::getSequenceName)
                 .collect(Collectors.toSet());
         allosomalContigSet = new HashSet<>(allosomalContigList);
@@ -302,7 +324,7 @@ public final class PostprocessGermlineCNVCalls extends GATKTool {
     public Object onTraversalSuccess() {
         generateIntervalsVCFFileFromAllShards();
         generateSegmentsVCFFileFromAllShards();
-
+        concatenateDenoisedCopyRatioFiles();
         logger.info(String.format("%s complete.", getClass().getSimpleName()));
 
         return null;
@@ -323,6 +345,48 @@ public final class PostprocessGermlineCNVCalls extends GATKTool {
             germlineCNVIntervalVariantComposer.writeAll(getShardIntervalCopyNumberPosteriorData(shardIndex));
         }
         intervalsVCFWriter.close();
+    }
+
+    private void concatenateDenoisedCopyRatioFiles() {
+        if (outputDenoisedCopyRatioFile != null) {
+            logger.info("Concatenating the denoised copy ratios...");
+            final List<SimpleInterval> concatenatedIntervalList = new ArrayList<>();
+            final List<LinearNonLocatableCopyRatio> concatenatedDenoisedCopyRatioRecordsList = new ArrayList<>();
+            /* Read in and concatenate all denoised copy ratio files into one list */
+            for (int shardIndex = 0; shardIndex < numShards; shardIndex++) {
+                final File shardRootDirectory = sortedCallsShardPaths.get(shardIndex);
+                final File denoisedCopyRatioFile = getSampleDenoisedCopyRatioFile(shardRootDirectory, sampleIndex);
+                final DenoisedCopyRatioCollection shardDenoisedCopyRatioCollectionForShard = new DenoisedCopyRatioCollection(denoisedCopyRatioFile);
+                final List<SimpleInterval> shardIntervals = sortedIntervalCollections.get(shardIndex).getIntervals();
+                final String sampleNameFromDenoisedCopyRatioFile = shardDenoisedCopyRatioCollectionForShard
+                        .getMetadata().getSampleName();
+                Utils.validate(sampleNameFromDenoisedCopyRatioFile.equals(sampleName),
+                        String.format("Sample name found in the header of denoised copy ratio file for shard %d " +
+                                        "different from the expected sample name (found: %s, expected: %s).",
+                                shardIndex, sampleNameFromDenoisedCopyRatioFile, sampleName));
+                final List<LinearNonLocatableCopyRatio> shardDenoisedCopyRatioRecords = shardDenoisedCopyRatioCollectionForShard.getRecords();
+                Utils.validate(shardIntervals.size() == shardDenoisedCopyRatioRecords.size(),
+                        String.format("The number of entries in denoised copy ratio file for shard %d does " +
+                                        "not match the number of entries in the shard interval list (copy ratio list size: %d, " +
+                                        "interval list size: %d)", shardIndex, shardDenoisedCopyRatioRecords.size(),
+                                shardIntervals.size()));
+                concatenatedIntervalList.addAll(shardIntervals);
+                concatenatedDenoisedCopyRatioRecordsList.addAll(shardDenoisedCopyRatioRecords);
+            }
+            /* Attach the corresponding intervals */
+            final List<DenoisedLocatableCopyRatio> denoisedLocatableCopyRatioList =
+                    IntStream.range(0, concatenatedIntervalList.size()).mapToObj(intervalIndex ->
+                            new DenoisedLocatableCopyRatio(concatenatedIntervalList.get(intervalIndex),
+                                    concatenatedDenoisedCopyRatioRecordsList.get(intervalIndex))).collect(Collectors.toList());
+            final SimpleSampleLocatableMetadata metadata = new SimpleSampleLocatableMetadata(sampleName, sequenceDictionary);
+            /* Make a locatable collection of denoised copy ratios and write it to file */
+            final DenoisedLocatableCopyRatioCollection denoisedLocatableCopyRatioCollection =
+                    new DenoisedLocatableCopyRatioCollection(metadata, denoisedLocatableCopyRatioList);
+            denoisedLocatableCopyRatioCollection.write(outputDenoisedCopyRatioFile);
+            logger.info("Finished writing the denoised copy ratios file.");
+        } else {
+            logger.info("No denoised copy ratio file provided - skipping the concatenation step.");
+        }
     }
 
     /**
@@ -413,7 +477,7 @@ public final class PostprocessGermlineCNVCalls extends GATKTool {
     }
 
     /**
-     * Gets the copy-number posterior file from the shard directory for a given sample index.
+     * Gets the baseline copy-number file from the shard directory for a given sample index.
      */
     private static File getSampleBaselineCopyNumberFile(final File callShardPath, final int sampleIndex) {
         return Paths.get(
@@ -433,7 +497,16 @@ public final class PostprocessGermlineCNVCalls extends GATKTool {
     }
 
     /**
-     * Gets the interval list file from the shard directory
+     * Gets the denoised copy ratio file from the shard directory given sample index.
+     */
+    private static File getSampleDenoisedCopyRatioFile(final File callShardPath, final int sampleIndex) {
+        return Paths.get(
+                callShardPath.getAbsolutePath(),
+                GermlineCNVNamingConstants.SAMPLE_PREFIX + sampleIndex,
+                GermlineCNVNamingConstants.DENOISED_COPY_RATIO_MEAN_FILE_NAME).toFile();
+    }
+    /**
+     * Gets the interval list file from the shard directory.
      */
     private static File getIntervalFileFromShardDirectory(final File shardPath) {
         return new File(shardPath, GermlineCNVNamingConstants.INTERVAL_LIST_FILE_NAME);

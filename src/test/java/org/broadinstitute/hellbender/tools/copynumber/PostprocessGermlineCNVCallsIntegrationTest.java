@@ -50,6 +50,11 @@ public final class PostprocessGermlineCNVCallsIntegrationTest extends CommandLin
             new File(TEST_SUB_DIR, "segments_output_SAMPLE_001.vcf"),
             new File(TEST_SUB_DIR, "segments_output_SAMPLE_002.vcf"));
 
+    private static final List<File> DENOISED_COPY_RATIOS_OUTPUTS = Arrays.asList(
+            new File(TEST_SUB_DIR, "denoised_copy_ratios_SAMPLE_000.tsv"),
+            new File(TEST_SUB_DIR, "denoised_copy_ratios_SAMPLE_001.tsv"),
+            new File(TEST_SUB_DIR, "denoised_copy_ratios_SAMPLE_002.tsv"));
+
     private static final int NUM_TEST_SAMPLES = 3;
 
     /**
@@ -61,6 +66,7 @@ public final class PostprocessGermlineCNVCallsIntegrationTest extends CommandLin
                                         final int sampleIndex,
                                         final File intervalsOutputVCF,
                                         final File segmentsOutputVCF,
+                                        final File denoisedCopyRatiosOutput,
                                         final List<String> allosomalContigs,
                                         final int refAutosomalCopyNumber) {
         final ArgumentsBuilder argumentsBuilder = new ArgumentsBuilder();
@@ -88,6 +94,11 @@ public final class PostprocessGermlineCNVCallsIntegrationTest extends CommandLin
                     segmentsOutputVCF.getAbsolutePath());
         }
 
+        if (denoisedCopyRatiosOutput != null) {
+            argumentsBuilder.addArgument(PostprocessGermlineCNVCalls.OUTPUT_DENOISED_COPY_RATIOS_LONG_NAME,
+                    denoisedCopyRatiosOutput.getAbsolutePath());
+        }
+
         runCommandLine(argumentsBuilder.getArgsList());
     }
 
@@ -97,13 +108,16 @@ public final class PostprocessGermlineCNVCallsIntegrationTest extends CommandLin
                                         final List<String> modelShards) throws IOException {
         final File actualIntervalsOutputVCF = createTempFile("intervals-output-vcf-" + sampleIndex, ".vcf");
         final File actualSegmentsOutputVCF = createTempFile("segments-output-vcf-" + sampleIndex, ".vcf");
+        final File actualDenoisedCopyRatiosOutput = createTempFile("denoised_copy_ratios-output-" + sampleIndex, ".tsv");
         final File expectedIntervalsOutputVCF = INTERVALS_VCF_CORRECT_OUTPUTS.get(sampleIndex);
         final File expectedSegmentsOutputVCF = SEGMENTS_VCF_CORRECT_OUTPUTS.get(sampleIndex);
+        final File expectedDenoisedCopyRatiosOutput = DENOISED_COPY_RATIOS_OUTPUTS.get(sampleIndex);
         runToolForSingleSample(callShards, modelShards, sampleIndex,
-                actualIntervalsOutputVCF, actualSegmentsOutputVCF,
+                actualIntervalsOutputVCF, actualSegmentsOutputVCF, actualDenoisedCopyRatiosOutput,
                 ALLOSOMAL_CONTIGS, AUTOSOMAL_REF_COPY_NUMBER);
         IntegrationTestSpec.assertEqualTextFiles(actualIntervalsOutputVCF, expectedIntervalsOutputVCF, "##");
         IntegrationTestSpec.assertEqualTextFiles(actualSegmentsOutputVCF, expectedSegmentsOutputVCF, "##");
+        IntegrationTestSpec.assertEqualTextFiles(actualDenoisedCopyRatiosOutput, expectedDenoisedCopyRatiosOutput, "##");
     }
 
     @Test(dataProvider = "differentInvalidInput", expectedExceptions = IllegalArgumentException.class, groups = {"python"})
@@ -113,6 +127,7 @@ public final class PostprocessGermlineCNVCallsIntegrationTest extends CommandLin
         runToolForSingleSample(callShards, modelShards, sampleIndex,
                 createTempFile("intervals-output-vcf", ".vcf"),
                 createTempFile("segments-output-vcf", ".vcf"),
+                null,
                 ALLOSOMAL_CONTIGS, AUTOSOMAL_REF_COPY_NUMBER);
     }
 
@@ -121,6 +136,7 @@ public final class PostprocessGermlineCNVCallsIntegrationTest extends CommandLin
         runToolForSingleSample(CALL_SHARDS, MODEL_SHARDS, 0,
                 createTempFile("intervals-output-vcf", ".vcf"),
                 createTempFile("segments-output-vcf", ".vcf"),
+                null,
                 Collections.singletonList("Z"), /* unknown contig */
                 AUTOSOMAL_REF_COPY_NUMBER);
     }
