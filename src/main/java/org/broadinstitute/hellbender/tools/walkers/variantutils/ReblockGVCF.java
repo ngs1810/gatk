@@ -267,7 +267,7 @@ public final class ReblockGVCF extends VariantWalker {
 
     private boolean shouldBeReblocked(final VariantContext result) {
         final Genotype genotype = result.getGenotype(0);
-        return genotype.getPL()[0] < rgqThreshold || genotype.isHomRef();
+        return !genotype.isCalled() || (genotype.hasPL() && genotype.getPL()[0] < rgqThreshold) || genotype.isHomRef();
     }
 
     /**
@@ -278,8 +278,11 @@ public final class ReblockGVCF extends VariantWalker {
      */
     @VisibleForTesting
     public VariantContext lowQualVariantToGQ0HomRef(final VariantContext result, final VariantContext originalVC) {
-        if(dropLowQuals && !isHomRefCall(result)) {
+        if(dropLowQuals && (!isHomRefCall(result) || !result.getGenotype(0).isCalled())) {
             return null;
+        }
+        if (!result.getGenotype(0).isCalled()) {
+            return result;
         }
 
         final Map<String, Object> attrMap = new HashMap<>();

@@ -71,6 +71,11 @@ public class ReblockGVCFUnitTest {
         Assert.assertTrue(modified.getAlternateAllele(0).equals(Allele.NON_REF_ALLELE));
         Assert.assertTrue(!modified.filtersWereApplied());
         Assert.assertTrue(modified.getLog10PError() == VariantContext.NO_LOG10_PERROR);
+
+        final Genotype g2 = makeG("sample1", Allele.NO_CALL,Allele.NO_CALL);
+        final VariantContext noData = makeDeletionVC("noData", Arrays.asList(LONG_REF, DELETION, Allele.NON_REF_ALLELE), LONG_REF.length(), g2);
+        final VariantContext notCrashing = reblocker.lowQualVariantToGQ0HomRef(noData, noData);
+        Assert.assertTrue(notCrashing.getGenotype(0).isNoCall());
     }
 
     @Test
