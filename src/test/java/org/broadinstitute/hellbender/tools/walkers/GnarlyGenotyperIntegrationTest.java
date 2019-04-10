@@ -36,7 +36,7 @@ public class GnarlyGenotyperIntegrationTest extends CommandLineProgramTest {
         return new Object[][]{
                 // Simple Test, spanning deletions
                 {new File[]{getTestFile("sample1.vcf"), getTestFile("sample2.vcf"), getTestFile("sample3.vcf"), getTestFile("sample4.vcf"), getTestFile("sample5.vcf")},
-                        getTestFile("fiveSampleTest.vcf"), "chr20:250865-348163", NO_EXTRA_ARGS, b38_reference_20_21}
+                        getTestFile("fiveSampleTest.vcf"), "chr20:250865-348163", Arrays.asList("-stand-call-conf 10"), b38_reference_20_21}
         };
     }
 
