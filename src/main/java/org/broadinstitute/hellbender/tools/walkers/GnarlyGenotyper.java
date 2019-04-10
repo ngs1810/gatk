@@ -79,6 +79,9 @@ public final class GnarlyGenotyper extends VariantWalker {
 
     public static final int PIPELINE_MAX_ALT_COUNT = 6;
 
+    private double INDEL_QUAL_THRESHOLD;
+    private double SNP_QUAL_THRESHOLD;
+
     private static final int ASSUMED_PLOIDY = GATKVariantContextUtils.DEFAULT_PLOIDY;
 
     private final RMSMappingQuality mqCalculator = RMSMappingQuality.getInstance();
@@ -145,6 +148,10 @@ public final class GnarlyGenotyper extends VariantWalker {
 
         setupVCFWriter(inputVCFHeader, samples);
 
+        //we don't apply the prior to the QUAL approx in ReblockGVCF, so do it here
+        INDEL_QUAL_THRESHOLD = genotypeArgs.STANDARD_CONFIDENCE_FOR_CALLING - 10*Math.log10(genotypeArgs.indelHeterozygosity);
+        SNP_QUAL_THRESHOLD = genotypeArgs.STANDARD_CONFIDENCE_FOR_CALLING - 10*Math.log10(genotypeArgs.snpHeterozygosity);
+
         if (!SUMMARIZE_PLs) {
             GenotypeLikelihoodCalculators GLCprovider = new GenotypeLikelihoodCalculators();
 
@@ -210,7 +217,8 @@ public final class GnarlyGenotyper extends VariantWalker {
             warning.warn("Variant will not be output because it is missing the " + GATKVCFConstants.RAW_QUAL_APPROX_KEY + "key assigned by the ReblockGVCFs tool -- if the input did come from ReblockGVCFs, check the GenomicsDB vidmap.json annotation info");
         }
         final double QUALapprox = variant.getAttributeAsDouble(GATKVCFConstants.RAW_QUAL_APPROX_KEY, 0.0);
-        if(QUALapprox < genotypeArgs.STANDARD_CONFIDENCE_FOR_CALLING - 10*Math.log10(genotypeArgs.snpHeterozygosity)) { //we don't apply the prior to the QUAL approx in ReblockGVCF, so do it here
+        final boolean isIndel = variant.getReference().length() > 1 || variant.getAlternateAlleles().stream().anyMatch(allele -> allele.length() > 1);
+        if((isIndel && QUALapprox < INDEL_QUAL_THRESHOLD) || (!isIndel && QUALapprox < SNP_QUAL_THRESHOLD)) {
             return;
         }
 
