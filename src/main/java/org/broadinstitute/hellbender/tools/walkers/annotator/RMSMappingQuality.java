@@ -263,7 +263,7 @@ public final class RMSMappingQuality extends InfoFieldAnnotation implements Stan
     //TODO once the AS annotations have been added genotype gvcfs this can be removed for a more generic approach
     private static List<Long> parseRawDataString(String rawDataString) {
         try {
-            final String[] parsed = rawDataString.split(",");
+            final String[] parsed = rawDataString.trim().replaceAll("\\[|\\]", "").split(", *");
             if (parsed.length != NUM_LIST_ENTRIES) {
                 throw new UserException.BadInput("Raw value for annotation has " + parsed.length + " values, expected " + NUM_LIST_ENTRIES);
             }
