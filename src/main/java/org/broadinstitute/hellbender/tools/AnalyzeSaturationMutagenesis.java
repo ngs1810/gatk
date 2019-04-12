@@ -1282,7 +1282,7 @@ public final class AnalyzeSaturationMutagenesis extends GATKTool {
         }
     }
 
-    @VisibleForTesting static class ReadReport {
+    @VisibleForTesting static final class ReadReport {
         final List<Interval> refCoverage;
         final List<SNV> snvList;
 
