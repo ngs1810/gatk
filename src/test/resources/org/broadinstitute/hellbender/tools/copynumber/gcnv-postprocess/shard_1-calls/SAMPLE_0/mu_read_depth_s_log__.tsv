@@ -1,4 +1,5 @@
-@shape=(1,)
-@dtype=float64
+@CO	shape:(1,)
+@CO	dtype:float64
 @RG	ID:GATKCopyNumber	SM:SAMPLE_000
-5.9640788814357188
+VALUE_0
+5.964078881435718

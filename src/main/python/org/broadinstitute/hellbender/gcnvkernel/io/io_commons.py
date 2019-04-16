@@ -254,7 +254,7 @@ def read_ndarray_from_tsv(input_file: str,
                 if key == io_consts.type_key_value:
                     dtype = value
                 if key == io_consts.shape_key_value:
-                    shape = value
+                    shape = make_tuple(value)
             else:
                 assert dtype is not None and shape is not None, \
                     "Shape and dtype information could not be found in the header of " \
